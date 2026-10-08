@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simplest Wallet</title>
+<script type="importmap">
+{"imports": {
+  "@noble/curves/secp256k1": "https://esm.sh/@noble/curves@1.9.7/secp256k1",
+  "@noble/hashes/sha2": "https://esm.sh/@noble/hashes@1.8.0/sha2",
+  "@scure/base": "https://esm.sh/@scure/base@1.2.6"
+}}
+</script>
+<style>
+:root { --bg: #eef2f1; --ink: #102a2a; --mute: #5e7473; --line: #d3dcda; --acc: #0f766e; --on: #fff; --bad: #b42318; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0e1716; --ink: #e3ecea; --mute: #8aa09d; --line: #22302e; --acc: #4fd1c5; --on: #0e1716; --bad: #f97066; }
+}
+* { box-sizing: border-box; margin: 0; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
+main { max-width: 26rem; margin: 0 auto; padding: 2.5rem 1rem 4rem; display: grid; gap: 1.25rem; }
+header { display: flex; justify-content: space-between; color: var(--mute); font-size: .875rem; }
+h1 { font: inherit; color: var(--ink); font-weight: 600; }
+.bal { font-size: clamp(2.75rem, 14vw, 4rem); font-weight: 200; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.bal small { font-size: 1rem; font-weight: 400; color: var(--mute); letter-spacing: 0; }
+.mute, summary { color: var(--mute); font-size: .875rem; }
+.err { color: var(--bad); font-size: .875rem; }
+button { font: inherit; border: 0; border-radius: .5rem; padding: .7rem 1rem; background: var(--acc); color: var(--on); cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
+button.quiet, .tabs button { background: none; color: var(--acc); padding: .4rem .2rem; }
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.tabs { display: flex; gap: 1.25rem; border-bottom: 1px solid var(--line); }
+.tabs button { color: var(--mute); border-radius: 0; margin-bottom: -1px; border-bottom: 2px solid transparent; }
+.tabs [aria-pressed="true"] { color: var(--ink); border-color: var(--acc); }
+[data-addr][aria-pressed="false"] { color: var(--mute); }
+p:empty { display: none; }
+.panel { display: grid; gap: .75rem; }
+.addr { font: .8rem/1.45 ui-monospace, monospace; word-break: break-all; padding: .75rem; border: 1px solid var(--line); border-radius: .5rem; }
+label { display: grid; gap: .3rem; font-size: .875rem; color: var(--mute); }
+input { font: inherit; color: var(--ink); background: none; border: 1px solid var(--line); border-radius: .5rem; padding: .65rem .75rem; width: 100%; min-width: 0; }
+input:focus { border-color: var(--acc); outline: none; }
+.row { display: flex; gap: .5rem; }
+details { border-top: 1px solid var(--line); padding-top: 1rem; }
+summary { cursor: pointer; }
+details > * + * { margin-top: .75rem; }
+ul { list-style: none; padding: 0; font-size: .875rem; font-variant-numeric: tabular-nums; }
+li { display: flex; justify-content: space-between; padding: .2rem 0; }
+li span + span { color: var(--mute); }
+</style>
+
+<main>
+  <header><h1>Simplest Wallet</h1><span id="net"></span></header>
+  <p id="note" class="mute" role="status">Connecting…</p>
+
+  <form id="setup" class="panel" hidden>
+    <p>One key holds your coins. Delegatee runs the transactions it signs, and renews your coins while you are away.</p>
+    <button type="button" id="create">Create a wallet</button>
+    <label>Or restore it from its key<input id="key" placeholder="64 hex characters" autocomplete="off" spellcheck="false"></label>
+    <button class="quiet" id="restore" disabled>Restore</button>
+  </form>
+
+  <div id="wallet" class="panel" hidden>
+    <p class="bal"><span id="bal">0</span> <small>sats</small></p>
+    <p id="pending" class="mute"></p>
+
+    <nav class="tabs">
+      <button aria-pressed="true" data-tab="receive">Receive</button>
+      <button aria-pressed="false" data-tab="send">Send</button>
+    </nav>
+
+    <div id="receive" class="panel">
+      <div class="row">
+        <button class="quiet" aria-pressed="true" data-addr="ark">Ark address</button>
+        <button class="quiet" aria-pressed="false" data-addr="btc">Bitcoin address</button>
+      </div>
+      <p id="addr" class="addr"></p>
+      <p id="addr-hint" class="mute"></p>
+      <button id="copy">Copy address</button>
+    </div>
+
+    <form id="send" class="panel" hidden novalidate>
+      <label>To<input id="to" placeholder="Ark address" autocomplete="off" spellcheck="false"></label>
+      <label>Amount
+        <span class="row"><input id="amount" inputmode="numeric" placeholder="sats" autocomplete="off"><button type="button" class="quiet" id="max">Max</button></span>
+      </label>
+      <p id="send-note" role="status"></p>
+      <button id="go" disabled>Send</button>
+    </form>
+
+    <details><summary id="coins-sum">No coins</summary><ul id="coins"></ul></details>
+    <details>
+      <summary>Backup key</summary>
+      <p class="mute">Anyone with this key can spend your coins. Keep a copy somewhere safe.</p>
+      <p id="secret" class="addr"></p>
+      <button class="quiet" id="copy-key">Copy key</button>
+    </details>
+  </div>
+</main>
+
+<script type="module">
+import { Wallet, destination, newSecret } from './wallet.js'
+
+const $ = (id) => document.getElementById(id)
+const sats = (n) => n.toLocaleString('en-US')
+const KEY = 'simplestwallet.secret'
+const store = { get: () => { try { return localStorage.getItem(KEY) } catch { return null } }, set: (v) => { try { localStorage.setItem(KEY, v) } catch {} } }
+let w, view = { addr: 'ark' }, last = '', spendable = 0
+
+const note = (text, bad) => { $('note').textContent = text; $('note').className = bad ? 'err' : 'mute'; $('note').hidden = !text }
+
+async function open(secret) {
+  note('Connecting…')
+  const json = (p) => fetch(p).then((r) => r.json())
+  const [config, artifact, renewal, boarding] = await Promise.all(
+    ['config.json', 'contract/simple_wallet.json', 'contract/renewal.json', 'contract/boarding.json'].map(json))
+  w = await new Wallet(secret, config, { artifact, renewal, boarding }).init()
+  store.set(secret)
+  note('')
+  $('setup').hidden = true
+  $('wallet').hidden = false
+  $('net').textContent = w.network
+  $('secret').textContent = secret
+  showAddress()
+  await refresh()
+  setInterval(() => document.hidden || refresh(), 4000)
+  document.addEventListener('visibilitychange', () => document.hidden || refresh())
+}
+
+async function refresh() {
+  let coins
+  try { coins = await w.coins() } catch { return note('Delegatee is unreachable, retrying…', true) }
+  note('')
+  const key = JSON.stringify(coins)
+  if (key === last) return
+  last = key
+  const { vtxos, deposits } = coins
+  const total = vtxos.reduce((n, v) => n + v.amount, 0)
+  const arriving = deposits.reduce((n, v) => n + v.amount, 0)
+  spendable = w.spendable(vtxos).reduce((n, v) => n + v.amount, 0)
+  $('bal').textContent = sats(total)
+  $('pending').textContent = arriving ? `${sats(arriving)} sats arriving from bitcoin` : total ? '' : 'Receive some bitcoin to get started.'
+  $('coins-sum').textContent = vtxos.length ? `${vtxos.length} coin${vtxos.length > 1 ? 's' : ''}` : 'No coins'
+  $('coins').replaceChildren(...vtxos.map((v) => {
+    const li = document.createElement('li')
+    const min = Math.max(0, Math.ceil((v.expiresAt - w.config.renewalWindow - Date.now() / 1000) / 60))
+    li.append(...[`${sats(v.amount)} sats`, min ? `renews in ${min} min` : 'renewing'].map((t) => Object.assign(document.createElement('span'), { textContent: t })))
+    return li
+  }))
+  check()
+}
+
+function showAddress() {
+  const ark = view.addr === 'ark'
+  $('addr').textContent = ark ? w.address : w.boardingAddress
+  $('addr-hint').textContent = ark ? 'For Ark wallets: arrives at once.' : 'For any bitcoin wallet: joins your balance after one confirmation.'
+  document.querySelectorAll('[data-addr]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.addr === view.addr))
+}
+
+// check names the send button's action and returns what blocks it
+function check() {
+  const to = $('to').value.trim(), amount = Number($('amount').value)
+  let problem = ''
+  if (to) {
+    try {
+      if (!destination(to, w.network, w.server).offchain) problem = 'Sending to a bitcoin address is not available yet.'
+    } catch (e) {
+      if (to.length > 20) problem = e.message.includes('server') ? 'This address belongs to another Ark server.' : 'This is not a valid Ark address.'
+    }
+  }
+  if (!problem && $('amount').value && !(Number.isInteger(amount) && amount > 0)) problem = 'Enter a whole number of sats.'
+  if (!problem && amount > spendable) problem = `You can send up to ${sats(spendable)} sats right now.`
+  const ok = to && amount > 0 && !problem
+  $('go').disabled = !ok
+  $('go').textContent = ok ? `Send ${sats(amount)} sats` : 'Send'
+  return problem
+}
+
+const sendNote = (text, bad) => { $('send-note').textContent = text; $('send-note').className = bad ? 'err' : 'mute' }
+
+async function send(e) {
+  e.preventDefault()
+  const go = $('go')
+  go.disabled = true
+  try {
+    go.textContent = 'Signing…'
+    const spend = await w.send($('to').value, Number($('amount').value))
+    go.textContent = 'Sending…'
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1500))
+      const s = await w.spendStatus(spend.id)
+      if (s.status === 'done' && !s.sent) throw new Error('A renewal took these coins first. Nothing was sent: send again.')
+      if (s.status === 'done') break
+      if (s.status !== 'active') throw new Error(`The send ${s.status}${s.error ? `: ${s.error}` : ''}. Nothing was sent.`)
+    }
+    $('send').reset()
+    sendNote(`Sent ${sats(spend.amount)} sats.`)
+    refresh()
+  } catch (err) {
+    sendNote(err.message, true)
+  }
+  check()
+}
+
+async function copy(button, text) {
+  await navigator.clipboard?.writeText(text)
+  const label = button.textContent
+  button.textContent = 'Copied'
+  setTimeout(() => (button.textContent = label), 1200)
+}
+
+document.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => {
+  document.querySelectorAll('[data-tab]').forEach((t) => t.setAttribute('aria-pressed', t === b))
+  $('receive').hidden = b.dataset.tab !== 'receive'
+  $('send').hidden = b.dataset.tab !== 'send'
+  if (b.dataset.tab === 'send') $('to').focus()
+}))
+document.querySelectorAll('[data-addr]').forEach((b) => (b.onclick = () => { view.addr = b.dataset.addr; showAddress() }))
+$('copy').onclick = () => copy($('copy'), $('addr').textContent)
+$('copy-key').onclick = () => copy($('copy-key'), $('secret').textContent)
+$('to').oninput = $('amount').oninput = () => sendNote(check(), true)
+$('max').onclick = () => { $('amount').value = spendable; sendNote(check(), true) }
+$('send').onsubmit = send
+
+const fail = (e) => note(`${e.message}. Reload to try again.`, true)
+$('key').oninput = () => ($('restore').disabled = !/^[0-9a-f]{64}$/.test($('key').value.trim()))
+$('create').onclick = () => open(newSecret()).catch(fail)
+$('setup').onsubmit = (e) => { e.preventDefault(); open($('key').value.trim()).catch(fail) }
+
+const secret = store.get()
+if (secret) open(secret).catch(fail)
+else { note(''); $('setup').hidden = false }
+</script>

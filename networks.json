@@ -1,0 +1,18 @@
+{
+  "regtest": {
+    "arkUrl": "http://localhost:7070",
+    "delegateeUrl": "http://localhost:7090",
+    "renewalWindow": 128,
+    "maxFee": 1000,
+    "withdrawFeeMax": 1000,
+    "spendLifetime": 600
+  },
+  "mutinynet": {
+    "arkUrl": "https://mutinynet.arkade.sh",
+    "delegateeUrl": "https://delegatee.mutinynet.arkade.sh",
+    "renewalWindow": 86400,
+    "maxFee": 1000,
+    "withdrawFeeMax": 1000,
+    "spendLifetime": 600
+  }
+}
