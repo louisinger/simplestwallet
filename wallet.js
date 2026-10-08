@@ -26,7 +26,7 @@ const be64 = (n) => le(n, 8).reverse()
 const toBig = (b) => BigInt('0x' + (hex.encode(b) || '0'))
 
 // minimal script number, what the contract reads as an int
-export function scriptNum(n) {
+function scriptNum(n) {
   let v = BigInt(n)
   if (v === 0n) return new Uint8Array()
   const neg = v < 0n
@@ -43,14 +43,14 @@ const pushNum = (n) => (n === 0 ? Uint8Array.of(0) : n <= 16 ? Uint8Array.of(0x5
 const compactSize = (n) => (n < 0xfd ? Uint8Array.of(n) : concat([0xfd], le(n, 2)))
 
 // BIP68 relative locktime as arkd counts it: seconds from 512 on, blocks below
-export const sequence = (delay) => (delay >= 512 ? (1 << 22) | Math.floor(delay / 512) : delay)
+const sequence = (delay) => (delay >= 512 ? (1 << 22) | Math.floor(delay / 512) : delay)
 
 // ---- taproot, as btcd assembles it ----
 
 const UNSPENDABLE = hex.decode('50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0')
 const tagged = schnorr.utils.taggedHash
 
-export const leafHash = (script) => tagged('TapLeaf', Uint8Array.of(0xc0), compactSize(script.length), script)
+const leafHash = (script) => tagged('TapLeaf', Uint8Array.of(0xc0), compactSize(script.length), script)
 
 function branch(a, b) {
   const [x, y] = hex.encode(a) < hex.encode(b) ? [a, b] : [b, a]
@@ -58,7 +58,7 @@ function branch(a, b) {
 }
 
 // pairs leaves in order, folds an odd last leaf into the last pair, then pairs branches as a queue
-export function treeRoot(hashes) {
+function treeRoot(hashes) {
   if (hashes.length === 1) return hashes[0]
   const branches = []
   for (let i = 0; i < hashes.length; i += 2) {
@@ -69,7 +69,7 @@ export function treeRoot(hashes) {
   return branches[0]
 }
 
-export function taprootKey(root) {
+function taprootKey(root) {
   const internal = schnorr.utils.lift_x(toBig(UNSPENDABLE))
   const t = toBig(tagged('TapTweak', UNSPENDABLE, root)) % secp256k1.CURVE.n
   return internal.add(secp256k1.ProjectivePoint.BASE.multiply(t)).toRawBytes(true).slice(1)
@@ -81,9 +81,6 @@ const p2tr = (key) => concat([0x51, 0x20], key)
 
 const arkHrp = (network) => (network === 'bitcoin' ? 'ark' : 'tark')
 const btcHrp = (network) => ({ bitcoin: 'bc', regtest: 'bcrt' })[network] ?? 'tb'
-
-export const arkAddress = (network, server, key) =>
-  bech32m.encode(arkHrp(network), bech32m.toWords(concat([0], server, key)), 1023)
 
 export const onchainAddress = (network, key) => bech32m.encode(btcHrp(network), [1, ...bech32m.toWords(key)])
 
@@ -111,13 +108,13 @@ export function newSecret() {
   return hex.encode(secp256k1.utils.randomPrivateKey())
 }
 
-export function keysOf(secret) {
+function keysOf(secret) {
   const priv = hex.decode(secret)
   const owner = secp256k1.getPublicKey(priv, true)
   return { priv, owner, xonly: owner.slice(1) }
 }
 
-export const exitLeaf = (xonly, delay) => concat(pushNum(sequence(delay)), [0xb2, 0x75, 0x20], xonly, [0xac])
+const exitLeaf = (xonly, delay) => concat(pushNum(sequence(delay)), [0xb2, 0x75, 0x20], xonly, [0xac])
 
 // 2-of-2 with the ark server: <a> CHECKSIGVERIFY <b> CHECKSIG, the server being a or b
 const withServer = (leaf, server, owner) =>
@@ -125,7 +122,7 @@ const withServer = (leaf, server, owner) =>
   (equal(leaf.slice(1, 33), server) || (equal(leaf.slice(1, 33), owner) && equal(leaf.slice(35, 67), server)))
 
 // checkWatch makes sure the tree delegatee derived holds our exit leaf, every other leaf being a 2-of-2 with the server
-export function checkWatch(tapscripts, key, exit, server, owner) {
+function checkWatch(tapscripts, key, exit, server, owner) {
   const leaves = tapscripts.map((s) => hex.decode(s))
   if (!equal(taprootKey(treeRoot(leaves.map(leafHash))), key)) throw new Error('tapscripts do not match the address')
   if (!leaves.some((l) => equal(l, exit))) throw new Error('the address has no exit leaf for this key')
@@ -137,7 +134,7 @@ export function checkWatch(tapscripts, key, exit, server, owner) {
 const TAGS = { send: 'simplestwallet/send/v1', withdraw: 'simplestwallet/withdraw/v1' }
 
 // authMessage is what each input's CSFS checks; prevTxid is in internal byte order
-export function authMessage(kind, prevTxid, vout, amount, change, validUntil, destScript) {
+function authMessage(kind, prevTxid, vout, amount, change, validUntil, destScript) {
   const version = destScript[0] === 0 ? 0 : destScript[0] - 0x50
   const program = destScript.slice(2)
   return sha256(
@@ -151,7 +148,7 @@ export function authMessage(kind, prevTxid, vout, amount, change, validUntil, de
 const internalTxid = (txid) => hex.decode(txid).reverse()
 
 // checkpointTxid is the virtual tx arkd puts between a vtxo and the ark tx spending it through leaf
-export function checkpointTxid(vtxo, leaf, unrollScript) {
+function checkpointTxid(vtxo, leaf, unrollScript) {
   const script = p2tr(taprootKey(branch(leafHash(unrollScript), leafHash(leaf))))
   const tx = concat(
     le(3, 4),
@@ -171,7 +168,7 @@ export function checkpointTxid(vtxo, leaf, unrollScript) {
 }
 
 // spendTemplate spends n coins: amount to dest, the rest back to the wallet when change > 0
-export function spendTemplate(kind, n, change, artifact) {
+function spendTemplate(kind, n, change, artifact) {
   const inputs = Array.from({ length: n }, (_, i) => `in${i}`)
   const variables = {
     owner: 'pubkey', exit_delay: 'int', renewal_window: 'int', max_fee: 'int',
@@ -212,7 +209,7 @@ export function spendTemplate(kind, n, change, artifact) {
 }
 
 // fingerprint is delegatee's spend id: sha256(template || 0 || variables JSON, keys sorted || 0 || outpoints)
-export function fingerprint(templateId, variables, outpoints) {
+function fingerprint(templateId, variables, outpoints) {
   const sorted = Object.fromEntries(Object.entries(variables).sort(([a], [b]) => (a < b ? -1 : 1)))
   return sha256(concat(utf8(templateId), [0], utf8(JSON.stringify(sorted)), [0], utf8(outpoints.join(','))))
 }
@@ -282,12 +279,6 @@ export class Wallet {
       vtxos: (funds.vtxos || []).map(vtxoOf).filter((v) => v.amount > 0),
       deposits: (boarding.vtxos || []).map(vtxoOf),
     }
-  }
-
-  async balance() {
-    const { vtxos, deposits } = await this.coins()
-    const sum = (l) => l.reduce((n, v) => n + v.amount, 0)
-    return { available: sum(vtxos), boarding: sum(deposits) }
   }
 
   // spendable leaves out coins about to renew: they would be gone before the spend runs

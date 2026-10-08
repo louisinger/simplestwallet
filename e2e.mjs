@@ -31,7 +31,7 @@ async function settle(wallet, spend) {
   })
 }
 
-const balance = (w) => w.balance().then((b) => b.available)
+const balance = async (w) => (await w.coins()).vtxos.reduce((n, v) => n + v.amount, 0)
 
 const alice = await new Wallet(newSecret(), config, docs).init()
 const bob = await new Wallet(newSecret(), config, docs).init()
@@ -46,16 +46,13 @@ console.log('alice sends 5,000 to bob offchain')
 await settle(alice, await alice.send(bob.address, 5_000))
 await until('bob is paid', async () => (await balance(bob)) === 5_000)
 
-// the emulator signs no intent with an onchain output yet (emulator #137)
-if (process.env.WITHDRAW) {
-  console.log('alice exits 3,000 to a bitcoin address')
-  const onchain = onchainAddress(alice.network, schnorr.getPublicKey(schnorr.utils.randomPrivateKey()))
-  await settle(alice, await alice.send(onchain, 3_000))
-  await until('onchain payment', async () => {
-    const utxos = await (await fetch(`http://localhost:3000/address/${onchain}/utxo`)).json()
-    return utxos.some((u) => u.value === 3_000)
-  })
-}
+console.log('alice exits 3,000 to a bitcoin address')
+const onchain = onchainAddress(alice.network, schnorr.getPublicKey(schnorr.utils.randomPrivateKey()))
+await settle(alice, await alice.send(onchain, 3_000))
+await until('onchain payment', async () => {
+  const utxos = await (await fetch(`http://localhost:3000/address/${onchain}/utxo`)).json()
+  return utxos.some((u) => u.value === 3_000)
+})
 
 console.log('bob sends everything back to alice')
 await settle(bob, await bob.send(alice.address, 5_000))

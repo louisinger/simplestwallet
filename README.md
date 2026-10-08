@@ -18,7 +18,7 @@ with the spend endpoint, listening on `config.json`'s `delegateeUrl`:
 ```sh
 npm install        # only for the e2e; the page loads its three libraries from esm.sh
 npm run serve      # http://localhost:8000
-npm run e2e        # board, send, send everything, spend several coins
+npm run e2e        # board, send, exit to bitcoin, send everything, spend several coins
 ```
 
 ## Networks
@@ -94,6 +94,7 @@ exit leaf of every coin, over `tagged_hash("delegatee/spend", id ‖ expires_at)
 - The key sits unencrypted in `localStorage`: fine for regtest only.
 - BTC only: coins carrying assets cannot be spent by these templates.
 - One address per wallet.
-- Collaborative exit (`withdraw`) does not run yet: the emulator signs no
-  intent with an onchain output (emulator #137). The page only takes Ark
-  addresses.
+- Collaborative exit (`withdraw`) needs an emulator that signs an intent with
+  onchain outputs when its arkade scripts check `onchain_output_indexes`;
+  released emulators refuse every such intent (emulator #137). The page then
+  says the server does not send to bitcoin addresses yet.
