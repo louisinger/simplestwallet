@@ -287,16 +287,12 @@ export class Wallet {
     return vtxos.filter((v) => !v.expiresAt || v.expiresAt > soon)
   }
 
-  // send pays amount sats to an ark address (offchain) or a bitcoin address (collaborative exit)
-  async send(address, amount) {
-    const dest = destination(address, this.network, this.server)
-    const kind = dest.offchain ? 'send' : 'withdraw'
-    const feeMax = dest.offchain ? 0 : this.config.withdrawFeeMax
-    const vtxos = this.spendable((await this.coins()).vtxos)
-    vtxos.sort((a, b) => b.amount - a.amount)
+  // plan picks the largest coins first; a change below dust joins the payment, so amount can grow
+  plan(vtxos, amount, offchain) {
+    const feeMax = offchain ? 0 : this.config.withdrawFeeMax
     const picked = []
     let total = 0
-    for (const v of vtxos) {
+    for (const v of this.spendable(vtxos).sort((a, b) => b.amount - a.amount)) {
       if (total >= amount + feeMax) break
       picked.push(v)
       total += v.amount
@@ -307,7 +303,15 @@ export class Wallet {
       amount = total - feeMax
       change = 0
     }
-    if (amount < this.dust) throw new Error(`amount below dust (${this.dust})`)
+    if (amount < this.dust) throw new Error(`The smallest payment is ${this.dust} sats.`)
+    return { picked, amount, change, feeMax }
+  }
+
+  // send pays amount sats to an ark address (offchain) or a bitcoin address (collaborative exit)
+  async send(address, wanted) {
+    const dest = destination(address, this.network, this.server)
+    const kind = dest.offchain ? 'send' : 'withdraw'
+    const { picked, amount, change, feeMax } = this.plan((await this.coins()).vtxos, wanted, dest.offchain)
 
     const doc = spendTemplate(kind, picked.length, change, this.artifact)
     const templateId = (await call(this.config.delegateeUrl, '/v1/template', { document: JSON.stringify(doc) })).template.id

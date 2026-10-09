@@ -55,6 +55,55 @@ It needs a delegatee with the spend endpoint at that network's `delegateeUrl`.
 | `send` | in an Ark transaction, as the owner authorized |
 | `withdraw` | in a batch, to a bitcoin output, as the owner authorized |
 
+### The story
+
+1. The coin the person sends: any payment to the address is one coin of the wallet.
+
+```mermaid
+flowchart LR
+  sender["sender<br/>Ark payment, or bitcoin boarded by delegatee"] --> fund["receive<br/>pays the address"]
+  fund --> coin["coin<br/>SimpleWallet(owner, exitDelay, renewalWindow, maxFee)"]
+```
+
+2. A direct send is a second coin beside the change of a `send`; the wallet counts both, its balance being every coin on the address.
+
+```mermaid
+flowchart LR
+  sender["sender"] --> sent["direct send"]
+  sent --> second["second coin<br/>same address"]
+  coin["coin"] --> send["send, change > 0<br/>owner signed amount, change, dest"]
+  send --> back["output 0: same script<br/>value ≥ change"]
+  send --> pay["output 1: dest<br/>value == amount"]
+```
+
+3. Rejected: a `send` paying a script the owner did not sign; it balances, but `checkSigFromStack` fails because the message hashes `dest`.
+
+```mermaid
+flowchart LR
+  coin["coin"] --> tx["rejected: send<br/>checkSigFromStack(sig, owner, msg) fails"]
+  tx --> back["output 0: same script<br/>value ≥ change"]
+  tx --> other["output 1: another script<br/>value == amount"]
+```
+
+4. Who signs versus who can build: a `require` is not authorization, so `renew` moves coins with no owner signature, back to the same script only.
+
+```mermaid
+flowchart LR
+  subgraph signs["who signs"]
+    exit["exit: owner key on the leaf<br/>after older(exitDelay)"]
+    auth["send, withdraw: owner signature<br/>checked from the stack, one per coin"]
+  end
+  subgraph builds["who can build"]
+    sw["send, withdraw, renew<br/>server + function-tweaked emulator"]
+    renew["renew: no owner signature<br/>same script and assets, value + maxFee ≥ input,<br/>after expiry − renewalWindow, cosigned by the delegate key"]
+  end
+```
+
+Enforced: the destination, amount, change and deadline the owner signed, the
+change back to the same script, and renewals that keep the coin on its script.
+Not claimed: that delegatee or the server stay online, that renewals happen
+in time, or the emulator keys (see below).
+
 `send` and `withdraw` are `SERVER + EMULATOR` leaves whose arkade script
 checks a BIP340 signature from the stack (`OP_CHECKSIGFROMSTACK`) by the
 owner, one per input, over

@@ -25,8 +25,9 @@ h1 { font: inherit; color: var(--ink); font-weight: 600; }
 .bal small { font-size: 1rem; font-weight: 400; color: var(--mute); letter-spacing: 0; }
 .mute, summary { color: var(--mute); font-size: .875rem; }
 .err { color: var(--bad); font-size: .875rem; }
-button { font: inherit; border: 0; border-radius: .5rem; padding: .7rem 1rem; background: var(--acc); color: var(--on); cursor: pointer; }
+button { font: inherit; border: 0; border-radius: .5rem; padding: .7rem 1rem; background: var(--acc); color: var(--on); cursor: pointer; transition: transform .1s ease-out; }
 button:disabled { opacity: .45; cursor: default; }
+button:active:not(:disabled) { transform: scale(.97); }
 button.quiet, .tabs button { background: none; color: var(--acc); padding: .4rem .2rem; }
 :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .tabs { display: flex; gap: 1.25rem; border-bottom: 1px solid var(--line); }
@@ -113,7 +114,7 @@ const sats = (n) => n.toLocaleString('en-US')
 const KEY = 'simplestwallet.secret'
 const store = (f) => { try { return f(localStorage) } catch {} }
 const inTime = (s) => (s < 3600 ? `${Math.ceil(s / 60)} min` : s < 172800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} days`)
-let w, addrKind = 'ark', last = '', spendable = 0, max = 0
+let w, addrKind = 'ark', last = '', vtxos = [], spendable = 0, max = 0
 
 const say = (id, text, bad) => Object.assign($(id), { textContent: text, className: bad ? 'err' : 'mute' })
 const note = (text, bad) => say('note', text, bad)
@@ -148,7 +149,8 @@ async function refresh() {
   const key = JSON.stringify(coins)
   if (key === last) return
   last = key
-  const { vtxos, deposits } = coins
+  const { deposits } = coins
+  vtxos = coins.vtxos
   const total = vtxos.reduce((n, v) => n + v.amount, 0)
   const arriving = deposits.reduce((n, v) => n + v.amount, 0)
   spendable = w.spendable(vtxos).reduce((n, v) => n + v.amount, 0)
@@ -174,21 +176,25 @@ function showAddress() {
 // check names the send button's action and returns what blocks it
 function check() {
   const to = $('to').value.trim(), amount = Number($('amount').value)
-  let problem = '', fee = 0
+  let problem = '', offchain = true, plan
   if (to) {
     try {
-      if (!destination(to, w.network, w.server).offchain) fee = w.config.withdrawFeeMax
+      offchain = destination(to, w.network, w.server).offchain
     } catch (e) {
       if (to.length > 20) problem = e.message.includes('server') ? 'This address belongs to another Ark server.' : 'This is not a valid address.'
     }
   }
-  $('to-hint').textContent = fee ? `Leaves with the next batch. Fees up to ${sats(fee)} sats.` : ''
+  const fee = offchain ? 0 : w.config.withdrawFeeMax
   max = Math.max(0, spendable - fee)
   if (!problem && $('amount').value && !(Number.isInteger(amount) && amount > 0)) problem = 'Enter a whole number of sats.'
   if (!problem && amount > max) problem = `You can send up to ${sats(max)} sats right now.`
-  const ok = to && amount > 0 && !problem
+  if (!problem && amount > 0) try { plan = w.plan(vtxos, amount, offchain) } catch (e) { problem = e.message }
+  // the button names the amount the contract checks: a leftover too small to keep is paid too
+  const extra = plan ? plan.amount - amount : 0
+  $('to-hint').textContent = [fee && `Leaves with the next batch. Fees up to ${sats(fee)} sats.`, extra && `Includes ${sats(extra)} sats left over, too few to keep.`].filter(Boolean).join(' ')
+  const ok = to && plan && !problem
   $('go').disabled = !ok
-  $('go').textContent = ok ? `Send ${sats(amount)} sats` : 'Send'
+  $('go').textContent = ok ? `Send ${sats(plan.amount)} sats` : 'Send'
   return problem
 }
 

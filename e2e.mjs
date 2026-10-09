@@ -5,33 +5,13 @@ import { readFileSync } from 'node:fs'
 import { schnorr } from '@noble/curves/secp256k1'
 import { Wallet, newSecret, onchainAddress } from './wallet.js'
 
-const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url)))
 const config = read('./config.json')
 const docs = { artifact: read('./contract/simple_wallet.json'), renewal: read('./contract/renewal.json'), boarding: read('./contract/boarding.json') }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-async function until(what, check, seconds = 180) {
-  for (let i = 0; i < seconds / 2; i++) {
-    const got = await check()
-    if (got) return got
-    await sleep(2000)
-  }
-  throw new Error(`timed out: ${what}`)
+// a down stack would only show up as a failing spend
+for (const url of [`${config.arkUrl}/v1/info`, `${config.delegateeUrl}/v1/info`]) {
+  if (!(await fetch(url).then((r) => r.ok, () => false))) throw new Error(`stack is down: ${url}`)
 }
-
-async function settle(wallet, spend) {
-  console.log(`  ${spend.kind} ${spend.amount} sats, change ${spend.change}: ${spend.id}`)
-  let last = ''
-  await until(`spend ${spend.id}`, async () => {
-    const s = await wallet.spendStatus(spend.id)
-    if (s.error && s.error !== last) console.log(`  attempt failed: ${(last = s.error)}`)
-    if (s.status === 'expired' || s.status === 'cancelled') throw new Error(`spend ${s.status}: ${s.error}`)
-    if (s.status === 'done' && !s.sent) throw new Error('coins spent by something else')
-    return s.status === 'done'
-  })
-}
-
-const balance = async (w) => (await w.coins()).vtxos.reduce((n, v) => n + v.amount, 0)
 
 const alice = await new Wallet(newSecret(), config, docs).init()
 const bob = await new Wallet(newSecret(), config, docs).init()
@@ -65,3 +45,36 @@ await settle(alice, await alice.send(bob.address, largest + 1_000))
 await until('bob is paid again', async () => (await balance(bob)) === largest + 1_000)
 
 console.log('ok')
+
+function read(p) {
+  return JSON.parse(readFileSync(new URL(p, import.meta.url)))
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+async function until(what, check, seconds = 180) {
+  for (let i = 0; i < seconds / 2; i++) {
+    const got = await check()
+    if (got) return got
+    await sleep(2000)
+  }
+  throw new Error(`timed out: ${what}`)
+}
+
+async function settle(wallet, spend) {
+  console.log(`  ${spend.kind} ${spend.amount} sats, change ${spend.change}: ${spend.id}`)
+  let last = ''
+  await until(`spend ${spend.id}`, async () => {
+    const s = await wallet.spendStatus(spend.id)
+    if (s.error && s.error !== last) console.log(`  attempt failed: ${(last = s.error)}`)
+    if (s.status === 'expired' || s.status === 'cancelled') throw new Error(`spend ${s.status}: ${s.error}`)
+    if (s.status === 'done' && !s.sent) throw new Error('coins spent by something else')
+    return s.status === 'done'
+  })
+}
+
+async function balance(w) {
+  return (await w.coins()).vtxos.reduce((n, v) => n + v.amount, 0)
+}
