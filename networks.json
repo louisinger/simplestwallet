@@ -10,6 +10,7 @@
   "mutinynet": {
     "arkUrl": "https://mutinynet.arkade.sh",
     "delegateeUrl": "https://delegatee.mutinynet.arkade.sh",
+    "lnurlUrl": "https://lnurl.mutinynet.arkade.sh",
     "renewalWindow": 86400,
     "maxFee": 1000,
     "withdrawFeeMax": 1000,

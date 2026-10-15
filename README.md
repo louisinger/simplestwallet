@@ -9,6 +9,9 @@ contract below accepts it.
   automatically.
 - **Send:** sign one message per spent coin and `POST /v1/spend`.
 - **Renew:** nothing to do; delegatee renews the coins before they expire.
+- **Lightning address:** with an [lnurl-server](https://github.com/ArkLabsHQ/lnurl-server)
+  at `config.json`'s `lnurlUrl`, the wallet holds a `name@domain` that receives
+  while the page is closed, and pays other lightning addresses over their Arkade rail.
 
 ## Run
 
@@ -16,10 +19,12 @@ Needs the regtest stack of delegatee (`make regtest-up`) and a delegatee
 with the spend endpoint, listening on `config.json`'s `delegateeUrl`:
 
 ```sh
-npm install        # only for the e2e; the page loads its three libraries from esm.sh
+npm install        # only for the e2e; the page loads its libraries from esm.sh and jsDelivr
 npm run serve      # http://localhost:8000
 npm run e2e        # board, send, exit to bitcoin, send everything, spend several coins
 ```
+
+The e2e also pays a lightning address when `config.json` has an `lnurlUrl`.
 
 ## Networks
 
@@ -40,6 +45,7 @@ It needs a delegatee with the spend endpoint at that network's `delegateeUrl`.
 | `contract/simple_wallet.json` | the contract (compiler artifact) |
 | `contract/renewal.json`, `contract/boarding.json` | delegatee watches: renew the coins, board deposits |
 | `wallet.js` | keys, addresses, authorizations, delegatee API |
+| `lightning.js` | the lightning address, through [`@arkade-os/lnurl-client`](https://www.npmjs.com/package/@arkade-os/lnurl-client) |
 | `index.html` | the page |
 | `networks.json`, `config.json` | network presets, the one in use |
 | `e2e.mjs` | the end-to-end test |
@@ -143,6 +149,13 @@ exit leaf of every coin, over `tagged_hash("delegatee/spend", id ‖ expires_at)
 - The key sits unencrypted in `localStorage`: fine for regtest only.
 - BTC only: coins carrying assets cannot be spent by these templates.
 - One address per wallet.
+- The lightning address: the lnurl-server token derives from the key, so a
+  restored wallet gets the same address back. A payment to it lands on a
+  per-payment covenant address that the server sweeps to the wallet's address;
+  the sweep can only pay that address, but the server must run it. The
+  covenant's fallback leaves use the owner key outside this contract, so this
+  page cannot spend them. Paying a lightning address works only when it offers
+  an Arkade rail; there is no Lightning node here.
 - Collaborative exit (`withdraw`) needs an emulator that signs an intent with
   onchain outputs when its arkade scripts check `onchain_output_indexes`;
   released emulators refuse every such intent (emulator #137). The page then
