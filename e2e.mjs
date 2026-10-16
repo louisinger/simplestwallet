@@ -4,6 +4,7 @@ import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { schnorr } from '@noble/curves/secp256k1'
 import { Wallet, newSecret, onchainAddress } from './wallet.js'
+import { lightningAddress, payLightning } from './lightning.js'
 
 const config = read('./networks.json').regtest
 const docs = { artifact: read('./contract/simple_wallet.json'), renewal: read('./contract/renewal.json'), boarding: read('./contract/boarding.json') }
@@ -43,6 +44,13 @@ const { vtxos } = await alice.coins()
 const largest = Math.max(...vtxos.map((v) => v.amount))
 await settle(alice, await alice.send(bob.address, largest + 1_000))
 await until('bob is paid again', async () => (await balance(bob)) === largest + 1_000)
+
+if (config.lnurlUrl) {
+  console.log("alice pays bob's lightning address")
+  const before = await balance(bob)
+  await settle(alice, await payLightning(alice, await lightningAddress(bob, config.lnurlUrl), 2_000))
+  await until('bob is paid over lightning address', async () => (await balance(bob)) === before + 2_000)
+}
 
 console.log('ok')
 

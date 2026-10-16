@@ -22,7 +22,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - run: mkdir site && cp -r index.html wallet.js networks.json contract site/
+      - run: mkdir site && cp -r index.html wallet.js lightning.js networks.json contract site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

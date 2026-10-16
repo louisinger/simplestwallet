@@ -9,7 +9,8 @@
   "@noble/curves/secp256k1": "https://esm.sh/@noble/curves@1.9.7/secp256k1",
   "@noble/curves/utils": "https://esm.sh/@noble/curves@1.9.7/utils",
   "@noble/hashes/sha2": "https://esm.sh/@noble/hashes@1.8.0/sha2",
-  "@scure/base": "https://esm.sh/@scure/base@1.2.6"
+  "@scure/base": "https://esm.sh/@scure/base@1.2.6",
+  "@arkade-os/lnurl-client": "https://cdn.jsdelivr.net/npm/@arkade-os/lnurl-client@0.6.0/+esm"
 }}
 </script>
 <style>
@@ -99,6 +100,7 @@ button.busy, button.busy:disabled { opacity: 1; cursor: progress; background: li
       <div class="pill">
         <button aria-pressed="true" data-addr="ark">Arkade</button>
         <button aria-pressed="false" data-addr="btc">Bitcoin</button>
+        <button aria-pressed="false" data-addr="ln" id="ln-pill" hidden>Lightning</button>
       </div>
       <div class="card">
         <p id="addr" class="addr"></p>
@@ -107,7 +109,7 @@ button.busy, button.busy:disabled { opacity: 1; cursor: progress; background: li
     </div>
 
     <form id="send" class="panel" hidden novalidate>
-      <label>To<input id="to" placeholder="Arkade or bitcoin address" autocomplete="off" spellcheck="false"></label>
+      <label>To<input id="to" placeholder="Arkade, bitcoin or lightning address" autocomplete="off" spellcheck="false"></label>
       <p id="to-hint" class="mute"></p>
       <label>Amount
         <span class="row"><input id="amount" inputmode="numeric" placeholder="sats" autocomplete="off"><button type="button" class="quiet" id="max">Max</button></span>
@@ -128,6 +130,7 @@ button.busy, button.busy:disabled { opacity: 1; cursor: progress; background: li
 
 <script type="module">
 import { Wallet, destination, newSecret } from './wallet.js'
+import { isValidLnUrl, lightningAddress, payLightning } from './lightning.js'
 
 const $ = (id) => document.getElementById(id)
 const sats = (n) => n.toLocaleString('en-US')
@@ -137,7 +140,7 @@ const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' 
 let price = 0 // dollars per bitcoin, 0 until mempool.space answers: amounts then show in sats only
 const fiat = (n) => (price ? usd.format((n * price) / 1e8) : '')
 const amt = (n) => `${sats(n)} sats${price ? ` (${fiat(n)})` : ''}`
-let w, addrKind = 'ark', last = '', vtxos = [], total = 0, max = 0
+let w, addrKind = 'ark', last = '', vtxos = [], total = 0, max = 0, ln = ''
 
 const say = (id, text, bad) => Object.assign($(id), { textContent: text, className: bad ? 'err' : 'mute' })
 const note = (text, bad) => say('note', text, bad)
@@ -185,6 +188,8 @@ async function open(secret, created) {
     $('backup-note').textContent = 'Save this key now: it is the only way to restore this wallet.'
   }
   showAddress()
+  // optional: without an lnurl-server, or while it is down, the wallet has no lightning address
+  if (config.lnurlUrl) lightningAddress(w, config.lnurlUrl).then((a) => { ln = a; $('ln-pill').hidden = false }, () => {})
   getPrice()
   setInterval(getPrice, 600_000)
   await refresh()
@@ -227,10 +232,14 @@ async function refresh() {
 }
 
 function showAddress() {
-  const ark = addrKind === 'ark'
-  $('addr').textContent = ark ? w.address : w.boardingAddress
+  const [addr, hint] = {
+    ark: [w.address, 'For Arkade wallets: arrives at once.'],
+    btc: [w.boardingAddress, 'For any bitcoin wallet: joins your balance after one confirmation.'],
+    ln: [ln, 'For Lightning and Arkade wallets: arrives even while this page is closed.'],
+  }[addrKind]
+  $('addr').textContent = addr
   anim($('addr'), [{ opacity: 0 }, { opacity: 1 }], 250)
-  $('addr-hint').textContent = ark ? 'For Arkade wallets: arrives at once.' : 'For any bitcoin wallet: joins your balance after one confirmation.'
+  $('addr-hint').textContent = hint
   document.querySelectorAll('[data-addr]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.addr === addrKind))
 }
 
@@ -238,7 +247,8 @@ function showAddress() {
 function check() {
   const to = $('to').value.trim(), amount = Number($('amount').value)
   let problem = '', offchain = true, plan
-  if (to) {
+  const lightning = isValidLnUrl(to)
+  if (to && !lightning) {
     try {
       offchain = destination(to, w.network, w.server).offchain
     } catch (e) {
@@ -252,7 +262,7 @@ function check() {
   if (!problem && amount > 0) try { plan = w.plan(vtxos, amount, offchain) } catch (e) { problem = e.message }
   // the button names the amount the contract checks: a leftover too small to keep is paid too
   const extra = plan ? plan.amount - amount : 0
-  $('to-hint').textContent = [fee && `Leaves with the next batch. Fees up to ${amt(fee)}.`, extra && `Includes ${amt(extra)} left over, too few to keep.`].filter(Boolean).join(' ')
+  $('to-hint').textContent = [lightning && 'Paid over Arkade, when the address takes it.', fee && `Leaves with the next batch. Fees up to ${amt(fee)}.`, extra && `Includes ${amt(extra)} left over, too few to keep.`].filter(Boolean).join(' ')
   const ok = to && plan && !problem
   if ($('go').classList.contains('busy')) return problem // a send is running: leave its button alone
   $('go').disabled = !ok
@@ -267,7 +277,8 @@ async function send(e) {
   go.classList.add('busy')
   try {
     go.textContent = 'Signing…'
-    const spend = await w.send($('to').value, Number($('amount').value))
+    const to = $('to').value.trim(), amount = Number($('amount').value)
+    const spend = await (isValidLnUrl(to) ? payLightning(w, to, amount) : w.send(to, amount))
     go.textContent = 'Sending…'
     for (;;) {
       await new Promise((r) => setTimeout(r, 1500))
