@@ -13,7 +13,7 @@ contract below accepts it.
 ## Run
 
 Needs the regtest stack of delegatee (`make regtest-up`) and a delegatee
-with the spend endpoint, listening on `config.json`'s `delegateeUrl`:
+with the spend endpoint, listening on the regtest `delegateeUrl` of `networks.json`:
 
 ```sh
 npm install        # only for the e2e; the page loads its three libraries from esm.sh
@@ -23,15 +23,16 @@ npm run e2e        # board, send, exit to bitcoin, send everything, spend severa
 
 ## Networks
 
-`networks.json` holds a preset per network; `jq .mutinynet networks.json > config.json`
-switches to one (the committed `config.json` is regtest). The page reads
-`config.json`.
+`networks.json` holds a preset per network: mutinynet, mainnet, regtest. The
+page lists them in its header; picking one is remembered in `localStorage`. The
+default is the first preset, regtest when the page is served from `localhost`.
+One key is used on every network.
 
 ## Deploy
 
-`.github/workflows/pages.yml` publishes the page on GitHub Pages for the
-network named by the repository variable `NETWORK` (mutinynet by default).
-It needs a delegatee with the spend endpoint at that network's `delegateeUrl`.
+`.github/workflows/pages.yml` publishes the page on GitHub Pages with every
+preset. Each network needs a delegatee with the spend endpoint at its
+`delegateeUrl`.
 
 ## Files
 
@@ -41,7 +42,7 @@ It needs a delegatee with the spend endpoint at that network's `delegateeUrl`.
 | `contract/renewal.json`, `contract/boarding.json` | delegatee watches: renew the coins, board deposits |
 | `wallet.js` | keys, addresses, authorizations, delegatee API |
 | `index.html` | the page |
-| `networks.json`, `config.json` | network presets, the one in use |
+| `networks.json` | network presets |
 | `e2e.mjs` | the end-to-end test |
 
 ## The contract

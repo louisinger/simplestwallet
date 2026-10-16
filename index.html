@@ -21,7 +21,7 @@
 [hidden] { display: none !important; }
 body { background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
 main { max-width: 26rem; margin: 0 auto; padding: 2.5rem 1rem 4rem; display: grid; gap: 1.25rem; }
-header { display: flex; justify-content: space-between; color: var(--mute); font-size: .875rem; }
+header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem 1rem; color: var(--mute); font-size: .875rem; }
 h1 { font: inherit; color: var(--ink); font-weight: 600; }
 .bal { font-size: clamp(2.75rem, 14vw, 4rem); font-weight: 200; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .bal small { font-size: 1rem; font-weight: 400; color: var(--mute); letter-spacing: 0; }
@@ -74,7 +74,7 @@ button.busy, button.busy:disabled { opacity: 1; cursor: progress; background: li
 </style>
 
 <main>
-  <header><h1>Simplest Wallet</h1><span id="net"></span></header>
+  <header><h1>Simplest Wallet</h1><div class="pill" id="net" role="group" aria-label="Network"></div></header>
   <p id="note" class="mute" role="status">Connecting…</p>
 
   <form id="setup" class="panel" hidden>
@@ -131,7 +131,7 @@ import { Wallet, destination, newSecret } from './wallet.js'
 
 const $ = (id) => document.getElementById(id)
 const sats = (n) => n.toLocaleString('en-US')
-const KEY = 'simplestwallet.secret'
+const KEY = 'simplestwallet.secret', NET = 'simplestwallet.network'
 const store = (f) => { try { return f(localStorage) } catch {} }
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 let price = 0 // dollars per bitcoin, 0 until mempool.space answers: amounts then show in sats only
@@ -172,15 +172,13 @@ function delta(n) {
 
 async function open(secret, created) {
   note('Connecting…')
-  const json = (p) => fetch(p).then((r) => r.json())
-  const [config, artifact, renewal, boarding] = await Promise.all(
-    ['config.json', 'contract/simple_wallet.json', 'contract/renewal.json', 'contract/boarding.json'].map(json))
+  const [artifact, renewal, boarding] = await Promise.all(
+    ['contract/simple_wallet.json', 'contract/renewal.json', 'contract/boarding.json'].map(json))
   w = await new Wallet(secret, config, { artifact, renewal, boarding }).init()
   store((s) => s.setItem(KEY, secret))
   note('')
   $('setup').hidden = true
   $('wallet').hidden = false
-  $('net').textContent = w.network
   $('secret').textContent = secret
   if (created) {
     $('backup').open = true
@@ -326,6 +324,19 @@ $('forget').onclick = () => {
   $('forget').textContent = 'Click again to forget this key here'
   setTimeout(() => { delete $('forget').dataset.armed; $('forget').textContent = 'Use another wallet' }, 4000)
 }
+
+const json = (p) => fetch(p).then((r) => r.json())
+const networks = await json('networks.json')
+// ponytail: the first preset is the default on the web, regtest when served locally
+let net = store((s) => s.getItem(NET))
+if (!(net in networks)) net = location.hostname === 'localhost' ? 'regtest' : Object.keys(networks)[0]
+const config = networks[net]
+$('net').replaceChildren(...Object.keys(networks).map((n) => {
+  const b = Object.assign(document.createElement('button'), { textContent: n })
+  b.setAttribute('aria-pressed', n === net)
+  return b
+}))
+$('net').onclick = (e) => { if (e.target.textContent in networks) { store((s) => s.setItem(NET, e.target.textContent)); location.reload() } }
 
 const secret = store((s) => s.getItem(KEY))
 if (secret) open(secret).catch(fail)

@@ -1,11 +1,11 @@
 // End to end on the regtest stack: board, send offchain, exit to chain, send everything, spend several coins.
-// Needs nigiri, arkd, the emulator and a delegatee at config.json's urls.
+// Needs nigiri, arkd, the emulator and a delegatee at networks.json's regtest urls.
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { schnorr } from '@noble/curves/secp256k1'
 import { Wallet, newSecret, onchainAddress } from './wallet.js'
 
-const config = read('./config.json')
+const config = read('./networks.json').regtest
 const docs = { artifact: read('./contract/simple_wallet.json'), renewal: read('./contract/renewal.json'), boarding: read('./contract/boarding.json') }
 
 // a down stack would only show up as a failing spend

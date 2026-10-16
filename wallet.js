@@ -204,7 +204,7 @@ const vtxoOf = (v) => {
 }
 
 export class Wallet {
-  // docs: { artifact, renewal, boarding } parsed from contract/; config: see config.json
+  // docs: { artifact, renewal, boarding } parsed from contract/; config: a preset of networks.json
   constructor(secret, config, docs) {
     this.priv = hex.decode(secret)
     this.owner = secp256k1.getPublicKey(this.priv, true)
