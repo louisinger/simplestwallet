@@ -1,16 +1,17 @@
 {
-  "mutinynet": {
-    "arkUrl": "https://mutinynet.arkade.sh",
-    "delegateeUrl": "https://delegatee.mutinynet.arkade.sh",
-    "lnurlUrl": "https://lnurl.mutinynet.arkade.sh",
+  "bitcoin": {
+    "arkUrl": "https://arkade.computer",
+    "delegateeUrl": "https://delegatee.arkade.sh",
+    "lnurlUrl": "https://lnurl.arkade.sh",
     "renewalWindow": 86400,
     "maxFee": 1000,
     "withdrawFeeMax": 1000,
     "spendLifetime": 600
   },
-  "mainnet": {
-    "arkUrl": "https://arkade.computer",
-    "delegateeUrl": "https://delegatee.arkade.sh",
+  "mutinynet": {
+    "arkUrl": "https://mutinynet.arkade.sh",
+    "delegateeUrl": "https://delegatee.mutinynet.arkade.sh",
+    "lnurlUrl": "https://lnurl.mutinynet.arkade.sh",
     "renewalWindow": 86400,
     "maxFee": 1000,
     "withdrawFeeMax": 1000,

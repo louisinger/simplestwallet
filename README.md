@@ -28,10 +28,11 @@ The e2e also pays a lightning address when the regtest preset has an `lnurlUrl`.
 
 ## Networks
 
-`networks.json` holds a preset per network: mutinynet, mainnet, regtest. The
+`networks.json` holds a preset per network: bitcoin, mutinynet, regtest. The
 page lists them in its header; picking one is remembered in `localStorage`. The
-default is the first preset, regtest when the page is served from `localhost`.
-One key is used on every network.
+default is the first preset. Presets on `localhost` (regtest) are only offered,
+and the default, when the page itself is served from `localhost`. One key is
+used on every network.
 
 ## Deploy
 

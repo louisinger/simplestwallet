@@ -338,16 +338,18 @@ $('forget').onclick = () => {
 
 const json = (p) => fetch(p).then((r) => r.json())
 const networks = await json('networks.json')
-// ponytail: the first preset is the default on the web, regtest when served locally
+// presets on localhost are only offered when the page is served from localhost; the first preset is the default elsewhere
+const local = location.hostname === 'localhost'
+const names = Object.keys(networks).filter((n) => local || !networks[n].arkUrl.includes('localhost'))
 let net = store((s) => s.getItem(NET))
-if (!(net in networks)) net = location.hostname === 'localhost' ? 'regtest' : Object.keys(networks)[0]
+if (!names.includes(net)) net = local ? 'regtest' : names[0]
 const config = networks[net]
-$('net').replaceChildren(...Object.keys(networks).map((n) => {
+$('net').replaceChildren(...names.map((n) => {
   const b = Object.assign(document.createElement('button'), { textContent: n })
   b.setAttribute('aria-pressed', n === net)
   return b
 }))
-$('net').onclick = (e) => { if (e.target.textContent in networks) { store((s) => s.setItem(NET, e.target.textContent)); location.reload() } }
+$('net').onclick = (e) => { if (names.includes(e.target.textContent)) { store((s) => s.setItem(NET, e.target.textContent)); location.reload() } }
 
 const secret = store((s) => s.getItem(KEY))
 if (secret) open(secret).catch(fail)
